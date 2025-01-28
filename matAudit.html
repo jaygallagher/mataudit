@@ -1,0 +1,1549 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <base/>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Mat Audit Sheet</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+  
+  <script>
+
+    var provider = null;
+    var newEDCDate = null;
+    var newFamPhysicianStr = null;
+
+    // Function to post form data and parse HTML response
+    async function postFormData(url = '', formData = {}) {
+        // Convert form data object to URL-encoded string
+        const formBody = Object.keys(formData).map(key => 
+        encodeURIComponent(key) + '=' + encodeURIComponent(formData[key])
+        ).join('&');
+
+      // Send POST request
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+        body: formBody
+      });
+
+      // Get the response text
+      const text = await response.json();
+      console.log("frompost",text);
+
+      // Parse the HTML
+      //const parser = new DOMParser();
+      //const doc = parser.parseFromString(text, 'text/html');
+      //console.log('ddddd',doc); // Parsed HTML document
+      //const hiddenInput = doc.querySelector('input[type="hidden"][name="csv"]').value;
+
+      return text;
+    }
+
+  function parseCSV(csvString) {
+    // Split the string into rows
+    const rows = csvString.split('\n');
+
+    // Split each row into columns
+    const data = rows.map(row => row.split(','));
+
+    return data;
+  }
+
+  const tableData = [];
+
+  function findDateAtGestationalAge(edc, weeks) {
+    //const dueDate = new Date(edc);
+    const gestationalAgeInMilliseconds = weeks * 7 * 24 * 60 * 60 * 1000; // Convert weeks to milliseconds
+    const dateAtGestationalAge = new Date(edc.getTime() - gestationalAgeInMilliseconds);
+
+    return dateAtGestationalAge;
+  }
+
+  // Example usage
+  /*
+  postFormData('/oscar/oscarReport/reportByTemplate/GenerateReportAction.do', { templateId: '1', type: '' })
+  .then(docX => {
+    console.log('jjjj', docX);
+    const pData  = parseCSV(docX);
+    console.log("cccc",pData);
+
+    for (const element of pData) {
+      console.log('row',element, tableData[element[3]] ); 
+  //"id", "form_id", "demographic_no", "provider_no", "page_no", "field", "val", "create_date", "active", "formCreated",formEdited,archived
+  //["1", "1", "1", "999998", "1", "provider_no", "999998", "2024-11-06", "1", "", …] (12)
+  //["2", "1", "1", "999998", "1", "c_lastName", "TEST", "2024-11-06", "1", "", …] (12)
+  //["3", "1", "1", "999998", "1", "c_firstName", "PREGNANT", "2024-11-06", "1", "", …] (12)
+  //  0    1    2    3         4    5              6  
+      if(element[2] != "demographic_no" && tableData[element[2]]  == undefined){
+         tableData[element[2]] = {};
+         tableData[element[2]].demoNo = element[2];
+      }
+      
+      if(element[5] === "c_firstName"){
+        tableData[element[2]].firstName = element[6];
+      }
+
+      if(element[5] === "c_lastName"){
+        tableData[element[2]].lastName = element[6];
+      }
+      
+      if(element[5] === "pg1_formDate"){
+        tableData[element[2]].dateOfFirstVisit  = element[6];
+      }
+
+      if(element[5] === "ps_edb_final"){
+        tableData[element[2]].edc = element[6];
+
+        tableData[element[2]].gestAge20w = findDateAtGestationalAge(element[6] , 20).toISOString().split('T')[0];
+        tableData[element[2]].gestAge28w = findDateAtGestationalAge(element[6] , 28).toISOString().split('T')[0];
+        tableData[element[2]].gestAge36w = findDateAtGestationalAge(element[6] , 36).toISOString().split('T')[0];
+      }
+
+      if(element[5] === "c_famPhys"){
+        tableData[element[2]].nameOfFamPhysician = element[6];
+      }
+
+
+
+
+    }
+    //drawTableRows();
+
+  })
+  .catch(error => {
+    console.error('Error:', error);
+  });
+*/
+  
+ ////////////////Find latest ID 
+ function isValidDate(dateString) {
+    const timestamp = Date.parse(dateString);
+    return !isNaN(timestamp);
+}
+
+
+  
+  async function getDemographic(demographicNo){
+
+    const response = await fetch('/oscar/ws/rs/demographics/'+demographicNo, {
+        method: 'GET',
+        headers: {'Content-Type': 'application/json'}
+      });
+
+      // Get the response text
+      const demographicResponse = await response.json();
+      console.log("getDemographic",demographicResponse);
+      if ('rosterStatus' in demographicResponse) {
+        console.log("get Roster status");
+            const demographic_rosterStatus = demographicResponse.rosterStatus;
+            console.log("its Roster status",demographic_rosterStatus);
+            if(demographic_rosterStatus === "GUARD ME"){
+              document.getElementById('insuranceTypeGUARDME').checked = true;
+            }else if(demographic_rosterStatus === "IFH"){
+              document.getElementById('insuranceTypeIFH').checked = true;
+            }else if(demographic_rosterStatus === "OHIP"){
+              document.getElementById('insuranceTypeOHIP').checked = true;
+            }else if(demographic_rosterStatus === "UHIP"){
+              document.getElementById('insuranceTypeUHIP').checked = true;
+            }else if(demographic_rosterStatus === "Private Pay"){
+              document.getElementById('insuranceTypePrivatePay').checked = true;
+            }
+      }
+
+  }
+
+
+  async function getCurrentUser(){
+
+      const response = await fetch('/oscar/ws/rs/providerService/provider/me', {
+        method: 'GET',
+        headers: {'Content-Type': 'application/json'}
+      });
+
+      // Get the response text
+      //const providerResponse = await response.json();
+      provider = await response.json();
+      console.log("getCurrentUser",providerResponse);
+  }
+
+
+  function getFormatedDate(dt){
+    const newDate = new Date(dt);
+    return newDate.toISOString().split('T')[0];        
+  }
+
+  function getLastestFormData(demoNo){
+  console.log("demoNo",demoNo);
+   postFormData('/oscar/form/ONPerinatal.do', { method: 'getLatestFormIdByDemographic', demographicNo: demoNo })
+  .then(docX => {
+    console.log('jjjj', docX	);
+      console.log('now going to post again');
+      //////Get Latest Data 
+      postFormData('/oscar/form/ONPerinatal.do', { method: 'loadPage', demographic_no: demoNo, formId: docX.formId })
+        .then(docY => {
+          console.log('kkkk', docY	);
+          const latestPerinatal = docY.results;
+          //Is the field present in the returned results?
+              //Is the matching form field empty
+                  //YES = populate
+                  //NO = Does it match what is returned?
+                    //YES = great do nothing
+                    //NO = prompt user, offering to update
+          if ('c_famPhys' in latestPerinatal) {
+            const periNValue_c_famPhys = latestPerinatal.c_famPhys;
+            const nameField = document.getElementById('nameOfFamPhysician');
+            console.log("nameField.value.trim() === periNValue_c_famPhys.trim()",(nameField.value.trim() === periNValue_c_famPhys.trim()),nameField.value.trim(),periNValue_c_famPhys.trim());
+            if(periNValue_c_famPhys.trim().length > 0){
+                if(nameField.value.trim().length == 0){
+                  nameField.value = periNValue_c_famPhys;
+                }else if( nameField.value.trim() === periNValue_c_famPhys.trim()){
+                  console.log("sme nameField,",nameField,periNValue_c_famPhys);
+                }else{
+                  console.log("different nameField,",nameField.value,periNValue_c_famPhys)
+                  newFamPhysicianStr = periNValue_c_famPhys;
+                  document.getElementById('newPhysician').innerHTML = periNValue_c_famPhys;
+                  document.getElementById('newFamPhysicianMsg').style.display = "block";
+                }
+            }
+          }
+          if ('ps_edb_final' in latestPerinatal) {
+            console.log("ps_edb_final",new Date(latestPerinatal.ps_edb_final), latestPerinatal.ps_edb_final);
+            
+
+            if(isValidDate(latestPerinatal.ps_edb_final)){
+                if(edc.value.trim().length == 0){
+                  const periNps_edb_final = new Date(latestPerinatal.ps_edb_final);
+                  edc.value = periNps_edb_final.toISOString().split('T')[0];
+                  document.getElementById('week20').value = findDateAtGestationalAge(periNps_edb_final , 20).toISOString().split('T')[0];
+                  document.getElementById('week28').value= findDateAtGestationalAge(periNps_edb_final , 28).toISOString().split('T')[0];
+                  document.getElementById('week36').value = findDateAtGestationalAge(periNps_edb_final , 36).toISOString().split('T')[0];
+
+                }else {
+                  //The date in the perinatal for is in the format yyyy/mm/dd which parses to a local time date.
+                  //The date saved in this form is in the format yyyy-mm-dd which parses to UTC date.
+                  //This is a work around for that.  
+                  const dateParts = edc.value.split('-');
+                  const year = parseInt(dateParts[0], 10);
+                  const month = parseInt(dateParts[1], 10) - 1; // Months are 0-based in JavaScript
+                  const day = parseInt(dateParts[2], 10);
+                  const edcDate = new Date(year, month, day);
+                  const perinatalFormEDCDate =new Date(latestPerinatal.ps_edb_final);
+                  console.log("WHATABOT TIMES ", new Date(edc.value).getTime(), new Date(latestPerinatal.ps_edb_final).getTime());
+
+                  if(edcDate.getTime() != perinatalFormEDCDate.getTime()){
+                    console.log("they didn't equal ",edc.value,latestPerinatal.ps_edb_final);
+                    console.log("they didn't equal 2",new Date(edc.value).toLocaleDateString(),new Date(latestPerinatal.ps_edb_final),(new Date(edc.value).toLocaleDateString() != new Date(latestPerinatal.ps_edb_final)));
+                    console.log("they didn't equal 3",edcDate,perinatalFormEDCDate,(edcDate != perinatalFormEDCDate),edcDate.getTime(),perinatalFormEDCDate.getTime(),(perinatalFormEDCDate.getTime() != edcDate.getTime()) );
+                    newEDCDate = new Date(latestPerinatal.ps_edb_final);
+                    document.getElementById('newEDC').innerHTML = getFormatedDate(newEDCDate);
+                    document.getElementById('newEDCMsg').style.display = "block";
+                  }
+                }
+            }
+          }
+
+          if ('pg1_formDate' in latestPerinatal) {
+            console.log("pg1_formDate",new Date(latestPerinatal.pg1_formDate), latestPerinatal.pg1_formDate);
+            if(isValidDate(latestPerinatal.pg1_formDate)){
+                const dateOfFirstVisitField = document.getElementById('dateOfFirstVisit');
+                if(dateOfFirstVisitField.value.trim().length == 0){
+                  const periNpg1_formDate = new Date(latestPerinatal.pg1_formDate);
+                  dateOfFirstVisitField.value = periNpg1_formDate.toISOString().split('T')[0];
+                }
+            }
+          }
+          //Fields to check
+         
+          
+         
+/*
+{
+	"results": {
+		"provider_no": "999998",
+		"c_lastName": "TEST",
+		"c_firstName": "BETTY",
+		"c_city": "Toronto",
+		"c_province": "ON",
+		"c_partnerEduLevel": "UN",
+		"c_dateOfBirth": "2002-11-20",
+		"c_language": "ENG",
+		"c_eduLevel": "UN",
+		"c_maritalStatus": "UN",
+		"c_hinType": "OHIP",
+		"c_famPhys": "Dr. Marcus Welby",
+		"ps_edb_final": "2025/06/20",
+		"oh_num": "0",
+		"mh_26_egg": "UN",
+		"mh_26_sperm": "UN",
+		"pg1_formDate": "2024/11/21"
+	}
+}
+*/
+
+        
+
+        })
+        .catch(error => {
+          console.error('Error:', error);
+        });
+
+      //////
+  })
+  .catch(error => {
+    console.error('Error:', error);
+  });
+}
+
+ /////////////
+
+
+</script> 
+
+  
+<!-- main calendar program -->
+<script type="text/javascript" src="../share/calendar/calendar.js"></script>
+<script type="text/javascript" src="../share/calendar/lang/calendar-en.js"></script>
+<script type="text/javascript" src="../share/calendar/calendar-setup.js"></script>
+<link rel="stylesheet" type="text/css" media="all" href="../share/calendar/calendar.css" title="win2k-cold-1" />
+
+<style>
+  .custom-card{
+    margin-bottom:1.5em;
+  }
+</style>
+
+</head>
+
+ <body>  
+  <svg style="display: none;">
+    <symbol id="bi-calendar" viewBox="0 0 16 16">
+      <path d="M3.5 0a.5.5 0 0 1 .5.5V1h8V.5a.5.5 0 0 1 1 0V1h1a2 2 0 0 1 2 2v11a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2V3a2 2 0 0 1 2-2h1V.5a.5.5 0 0 1 .5-.5M1 4v10a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V4z"/>
+    </symbol>
+
+    
+</svg>
+
+  <div class="container-fluid"> <!-- containerfluid -->
+    <form>
+    <input type="hidden" name="demoNo" id="demoNo" oscarDB=patient_id >
+    <h1>Mat Audit <small>v0.11</small></h1>
+    <div>
+      <div class="alert alert-warning" role="alert" id="newEDCMsg" style="display:none;">
+         A different EDC is available from the Perinatal form <span id="newEDC">N/A</span> <a href="#" class="alert-link" id="updateEDCLink">Click here to update.</a>. 
+         <br>
+         This will update the 20, 28 and 36 week dates.
+      </div>
+      <div class="alert alert-warning" role="alert" id="newFamPhysicianMsg" style="display:none;">
+        A different Family Physician is available from the Perinatal form <span id="newPhysician">N/A</span> <a href="#" class="alert-link" id="updateFamPhysicianLink">Click here to update.</a>. 
+     </div>
+
+    </div>
+    <div class="card custom-card">
+      <h5 class="card-header">Demographics</h5>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <label for="lastName" class="form-label">Last Name</label>
+            <input type="text" class="form-control" id="lastName" name="lastName" oscarDB=patient_nameL>
+          </div>
+          <div class="col-md-6">
+            <label for="firstName" class="form-label">First Name</label>
+            <input type="text" class="form-control" id="firstName" name="firstName" oscarDB=patient_nameF>
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-md-6">
+            <div>
+              <label class="form-label">Insurance Type</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="insuranceType" id="insuranceTypeGUARDME" value="GUARD ME">
+              <label class="form-check-label" for="insuranceTypeGUARDME">
+                GUARD ME
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="insuranceType" id="insuranceTypeIFH" value="IFH">
+              <label class="form-check-label" for="insuranceTypeIFH">
+                IFH
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="insuranceType" id="insuranceTypeOHIP" value="OHIP">
+              <label class="form-check-label" for="insuranceTypeOHIP">
+                OHIP
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="insuranceType" id="insuranceTypeUHIP" value="UHIP">
+              <label class="form-check-label" for="insuranceTypeUHIP">
+                UHIP
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="insuranceType" id="insuranceTypePrivatePay" value="Private Pay">
+              <label class="form-check-label" for="insuranceTypePrivatePay">
+                Private Pay
+              </label>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <label for="nameOfFamPhysician" class="form-label">Name of Family Physician</label>
+            <input type="text" class="form-control" id="nameOfFamPhysician" name="nameOfFamPhysician">
+          </div>
+        </div>
+        <div class="row g-3">
+          <div class="col-3">
+            <label for="edc" class="form-label">EDC</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="edc" placeholder="YYYY-MM-DD" name="edc">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-3">
+            <label for="week20" class="form-label">20 Weeks</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="week20" placeholder="YYYY-MM-DD" name="week20">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-3">
+            <label for="week28" class="form-label">28 Weeks</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="week28" placeholder="YYYY-MM-DD" name="week28">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-3">
+            <label for="week36" class="form-label">36 Weeks</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="week36" placeholder="YYYY-MM-DD" name="week36">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          
+          </div>
+        </div>
+        <div class="row gy-3">
+          <div class="col-3">
+            <div>
+              <label class="form-label">Family MD at Registration</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="familyMDRegistration" id="familyMDRegistrationYes" value="yes">
+              <label class="form-check-label" for="familyMDRegistrationYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="familyMDRegistration" id="familyMDRegistrationNo" value="no">
+              <label class="form-check-label" for="familyMDRegistrationNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-3">
+            <label for="dateOfFirstVisit" class="form-label">Date of First Visit (GA)</label>
+            <div class="input-group">
+              
+              <input type="text" class="form-control" id="dateOfFirstVisit" placeholder="YYYY-MM-DD" name="dateOfFirstVisit">  
+              <span class="input-group-text">
+                <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                  <use href="#bi-calendar"></use>
+                </svg>
+              </span>
+            </div>
+            
+          </div>
+        </div>
+        
+        
+  
+      </div>
+    </div>
+
+
+    <div class="card custom-card">
+      <h5 class="card-header">20 Week Audit</h5>
+      <div class="card-body">
+
+        <div class="row gy-3">
+          <div class="col-4">
+            <div>
+              <label class="form-label">Dating u/s received</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="datingUsReceived" id="datingUsReceivedYes" value="yes">
+              <label class="form-check-label" for="datingUsReceivedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="datingUsReceived" id="datingUsReceivedNo" value="no">
+              <label class="form-check-label" for="datingUsReceivedNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label class="form-label">Initial BW Received</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="initBwReceived" id="initBwReceivedYes" value="yes" >
+              <label class="form-check-label" for="initBwReceivedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="initBwReceived" id="initBwReceivedNo" value="no">
+              <label class="form-check-label" for="initBwReceivedNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label class="form-label">Genetic Screening Results Received</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="geneticScreeningReceived" id="geneticScreeningReceivedYes" value="yes">
+              <label class="form-check-label" for="geneticScreeningReceivedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="geneticScreeningReceived" id="geneticScreeningReceivedNo" value="no">
+              <label class="form-check-label" for="geneticScreeningReceivedNo">
+                No
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label  class="form-label">Rh referral Needed</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="rhReferralNeeded" id="rhReferralNeededYes" value="yes">
+              <label class="form-check-label" for="rhReferralNeededYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="rhReferralNeeded" id="rhReferralNeededNo" value="no">
+              <label class="form-check-label" for="rhReferralNeededNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label  class="form-label">Rh referral Sent</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="rhReferralSent" id="rhReferralSentYes" value="yes" >
+              <label class="form-check-label" for="rhReferralSentYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="rhReferralSent" id="rhReferralSentNo" value="no">
+              <label class="form-check-label" for="rhReferralSentNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="rhClinicDate" class="form-label">Rh Clinic Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="rhClinicDate" placeholder="YYYY-MM-DD" name="rhClinicDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+        </div> 
+      </div><!-- Card Body -->
+      <div class="card-footer">
+          <div class="row g-3">
+            <div class="col-4">
+              <div>
+                <label class="form-label">20w Audit Complete</label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="audit20w" id="audit20wYes" value="yes" >
+                <label class="form-check-label" for="audit20wYes">
+                  Yes
+                </label>
+              </div>
+              <div class="form-check form-check-inline">
+                <input class="form-check-input" type="radio" name="audit20w" id="audit20wNo" value="no">
+                <label class="form-check-label" for="audit20wNo">
+                  No
+                </label>
+              </div>
+            </div>
+            <div class="col-4">
+              <label for="audit20wDate" class="form-label">Audit Complete Date</label>
+              <div class="input-group">
+              <input type="text" class="form-control" id="audit20wDate" placeholder="YYYY-MM-DD" name="audit20wDate">
+              <span class="input-group-text">
+                <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                  <use href="#bi-calendar"></use>
+                </svg>
+              </span>
+              </div>
+            </div>
+            <div class="col-4">
+              <label for="audit20wAuditor" class="form-label">Auditor</label>
+              <input type="text" class="form-control" id="audit20wAuditor" placeholder="Name" name="audit20wAuditor">
+            </div>
+          </div>
+      </div>
+
+      
+    </div>
+
+
+    <div class="card custom-card">
+      <h5 class="card-header">28 Week Audit</h5>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label class="form-label">Anatomy u/s booked</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="anatomyUSBooked" id="anatomyUSBookedYes" value="yes" >
+              <label class="form-check-label" for="anatomyUSBookedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="anatomyUSBooked" id="anatomyUSBookedNo" value="no">
+              <label class="form-check-label" for="anatomyUSBookedNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="anatomyUSResultYes" class="form-label">Anatomy u/s results received</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="anatomyUSResult" id="anatomyUSResultYes" value="yes" >
+              <label class="form-check-label" for="anatomyUSResultYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="anatomyUSResult" id="anatomyUSResultNo" value="no">
+              <label class="form-check-label" for="anatomyUSResultNo">
+                No
+              </label>
+            </div>
+          </div>
+          
+        </div>
+        
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="gdmResultRecievedYes" class="form-label">GDM result Received</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="gdmResultRecieved" id="gdmResultRecievedYes" value="yes" >
+              <label class="form-check-label" for="gdmResultRecievedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="gdmResultRecieved" id="gdmResultRecievedNo" value="no">
+              <label class="form-check-label" for="gdmResultRecievedNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="gdmResultRecievedPos" class="form-label">GDM Result</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="gdmResultRecieved" id="gdmResultRecievedPos" value="pos">
+              <label class="form-check-label" for="gdmResultRecievedPos">
+                Positive
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="gdmResultRecieved" id="gdmResultRecievedNeg" value="neg">
+              <label class="form-check-label" for="gdmResultRecievedNeg">
+                Negative
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="gdmReferralMadeYes" class="form-label">GDM Referral Made (if Positive)</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="gdmReferralMade" id="gdmReferralMadeYes" value="yes">
+              <label class="form-check-label" for="gdmReferralMadeYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="gdmReferralMade" id="gdmReferralMadeNo" value="no">
+              <label class="form-check-label" for="gdmReferralMadeNo">
+                No
+              </label>
+            </div>
+          </div>
+        </div> 
+      </div>
+      <div class="card-footer">
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label  class="form-label">28w Audit Complete</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="audit28w" id="audit28wYes" value="yes">
+              <label class="form-check-label" for="audit28wYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="audit28w" id="audit28wNo" value="no">
+              <label class="form-check-label" for="audit28wNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="audit28wDate" class="form-label">Audit Complete Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="audit28wDate" placeholder="YYYY-MM-DD" name="audit28wDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="audit28wAuditor" class="form-label">Auditor</label>
+            <input type="text" class="form-control" id="audit28wAuditor" placeholder="Name" name="audit28wAuditor">
+          </div>
+        </div>
+
+      </div>
+
+
+
+      
+    </div>
+
+    <div class="card custom-card">
+      <h5 class="card-header">36 Week Audit</h5>
+      <div class="card-body">
+        <div class="row gy-3">
+          <div class="col-4">
+            <div>
+              <label for="t3USNeededYes" class="form-label">T3 U/S Needed</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="t3USNeeded" id="t3USNeededYes" value="yes" >
+              <label class="form-check-label" for="t3USNeededYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="t3USNeeded" id="t3USNeededNo" value="no">
+              <label class="form-check-label" for="t3USNeededNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="t3USBooked" class="form-label">T3 U/S Booked</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="t3USBooked" placeholder="YYYY-MM-DD" name="t3USBooked">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="t3USResultsReceivedYes" class="form-label">T3 US results received</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="t3USResultsReceived" id="t3USResultsReceivedYes" value="yes" >
+              <label class="form-check-label" for="t3USResultsReceivedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="t3USResultsReceived" id="t3USResultsReceivedNo" value="no">
+              <label class="form-check-label" for="t3USResultsReceivedNo">
+                No
+              </label>
+            </div>
+          </div>
+        </div>
+
+        
+
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="dateFirstConsultSentYes" class="form-label">Date First Consult Sent</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="dateFirstConsultSent" id="dateFirstConsultSentYes" value="yes" >
+              <label class="form-check-label" for="dateFirstConsultSentYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="dateFirstConsultSent" id="dateFirstConsultSentNo" value="no">
+              <label class="form-check-label" for="dateFirstConsultSentNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="packageSentToSJHHYes" class="form-label">Package sent to SJHH (20-28wks)</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="packageSentToSJHH" id="packageSentToSJHHYes" value="yes" >
+              <label class="form-check-label" for="packageSentToSJHHYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="packageSentToSJHH" id="packageSentToSJHHNo" value="no">
+              <label class="form-check-label" for="packageSentToSJHHNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="updatedPackageSentGBSYes" class="form-label">Updated package sent w/GBS</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="updatedPackageSentGBS" id="updatedPackageSentGBSYes" value="yes">
+              <label class="form-check-label" for="updatedPackageSentGBSYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="updatedPackageSentGBS" id="updatedPackageSentGBSNo" value="no">
+              <label class="form-check-label" for="updatedPackageSentGBSNo">
+                No
+              </label>
+            </div>
+          </div>
+          
+        </div> 
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="swabDoneYes" class="form-label">Swab Done</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="swabDone" id="swabDoneYes" value="yes">
+              <label class="form-check-label" for="swabDoneYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="swabDone" id="swabDoneNo" value="no">
+              <label class="form-check-label" for="swabDoneNo">
+                No
+              </label>
+            </div>
+          </div>
+        </div>
+      </div> <!-- card body -->
+      <div class="card-footer">
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="audit36wYes" class="form-label">36w Audit Complete</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="audit36w" id="audit36wYes" value="yes">
+              <label class="form-check-label" for="audit36wYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="audit36w" id="audit36wNo" value="no">
+              <label class="form-check-label" for="audit36wNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="audit36wDate" class="form-label">Audit Complete Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="audit36wDate" placeholder="YYYY-MM-DD" name="audit36wDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="audit36wAuditor" class="form-label">Auditor</label>
+            <input type="text" class="form-control" id="audit36wAuditor" placeholder="Name" name="audit36wAuditor">
+          </div>
+        </div>
+      </div>
+
+
+      
+    </div><!-- card -->
+
+
+    <div class="card custom-card">
+      <h5 class="card-header">Delivery Summary</h5>
+      <div class="card-body">
+        
+
+        <div class="row gy-3">
+          <div class="col-4">
+            <div>
+              <label class="form-label">Type of Delivery</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="typeOfDelivery" id="typeOfDeliverySVD" value="svd">
+              <label class="form-check-label" for="typeOfDeliverySVD">
+                SVD
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="typeOfDelivery" id="typeOfDeliveryCS" value="cs">
+              <label class="form-check-label" for="typeOfDeliveryCS">
+                C/S
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="typeOfDelivery" id="typeOfDeliveryVAVD" value="vavd">
+              <label class="form-check-label" for="typeOfDeliveryVAVD">
+                VAVD
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="typeOfDelivery" id="typeOfDeliveryFORCEP" value="forcep">
+              <label class="form-check-label" for="typeOfDeliveryFORCEP">
+                Forcep
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="deliveryDate" class="form-label">Delivery Date</label>
+            </div>
+            <div class="input-group">
+            <input type="text" class="form-control" id="deliveryDate" placeholder="YYYY-MM-DD" name="deliveryDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="deliveryNoteRetrievedYes" class="form-label">Delivery Note Retrieved</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="deliveryNoteRetrieved" id="deliveryNoteRetrievedYes" value="yes">
+              <label class="form-check-label" for="deliveryNoteRetrievedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="deliveryNoteRetrieved" id="deliveryNoteRetrievedNo" value="no">
+              <label class="form-check-label" for="deliveryNoteRetrievedNo">
+                No
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="familyMDAtDischargeYes" class="form-label">Family MD at Discharge</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="familyMDAtDischarge" id="familyMDAtDischargeYes" value="yes">
+              <label class="form-check-label" for="familyMDAtDischargeYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="familyMDAtDischarge" id="familyMDAtDischargeNo" value="no">
+              <label class="form-check-label" for="familyMDAtDischargeNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="postPartumVisitArrangedYes" class="form-label">Post-partum Visit arranged</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="postPartumVisitArranged" id="postPartumVisitArrangedYes" value="yes">
+              <label class="form-check-label" for="postPartumVisitArrangedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="postPartumVisitArranged" id="postPartumVisitArrangedNo" value="no">
+              <label class="form-check-label" for="postPartumVisitArrangedNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="postPartumVisitDate" class="form-label">Post-partum Visit Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="postPartumVisitDate" placeholder="YYYY-MM-DD" name="postPartumVisitDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+        </div> 
+      </div>
+      <div class="card-footer">
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label  class="form-label">Delivery Summary Audit Complete</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="auditDeliverSum" id="auditDeliverSumYes" value="yes" >
+              <label class="form-check-label" for="auditDeliverSumYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="auditDeliverSum" id="auditDeliverSumNo" value="no">
+              <label class="form-check-label" for="auditDeliverSumNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="auditDeliverSumDate" class="form-label">Audit Complete Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="auditDeliverSumDate" placeholder="YYYY-MM-DD" name="auditDeliverSumDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="auditDeliverSumAuditor" class="form-label">Auditor</label>
+            <input type="text" class="form-control" id="auditDeliverSumAuditor" placeholder="Name" name="auditDeliverSumAuditor">
+          </div>
+        </div>
+      </div>
+
+
+      
+    </div>
+
+    <div class="card custom-card">
+      <h5 class="card-header">Post Partum Visit/ End of Care</h5>
+      <div class="card-body">
+        
+        <div class="row gy-3">
+          <div class="col-12">
+            <div>
+              <label class="form-label">Additional Healthcare Supports Provided</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportPubHealth" id="addHealthSupportPubHealth" value="yes">
+              <label class="form-check-label" for="addHealthSupportPubHealth">
+                Public Health
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportSocialWork" id="addHealthSupportSocialWork" value="yes">
+              <label class="form-check-label" for="addHealthSupportSocialWork">
+                Social Work
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportSTOP" id="addHealthSupportSTOP" value="yes">
+              <label class="form-check-label" for="addHealthSupportSTOP">
+                STOP
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportSystemNav" id="addHealthSupportSystemNav" value="yes">
+              <label class="form-check-label" for="addHealthSupportSystemNav">
+                System Navigator
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportTranslation" id="addHealthSupportTranslation" value="yes">
+              <label class="form-check-label" for="addHealthSupportTranslation">
+                Translation
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportWHCC" id="addHealthSupportWHCC" value="yes">
+              <label class="form-check-label" for="addHealthSupportWHCC">
+                WHCC
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addHealthSupportYMCA" id="addHealthSupportYMCA" value="yes">
+              <label class="form-check-label" for="addHealthSupportYMCA">
+                YMCA
+              </label>
+            </div>
+          </div>
+        </div>
+        <div class="row gy-3">
+          <div class="col-12">
+            <div>
+            <label class="form-label">Additional Resources Provided</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addResourceBusTickets" id="addResourceBusTickets" value="yes">
+              <label class="form-check-label" for="addResourceBusTickets">
+                Bus Tickets
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addResourceDonatedItems" id="addResourceDonatedItems" value="yes">
+              <label class="form-check-label" for="addResourceDonatedItems">
+                Donated Items
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addResourceFood" id="addResourceFood" value="yes">
+              <label class="form-check-label" for="addResourceFood">
+                Food
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addResourceGiftCards" id="addResourceGiftCards" value="yes">
+              <label class="form-check-label" for="addResourceGiftCards">
+                Gift Cards
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="addResourceMedSupplies" id="addResourceMedSupplies" value="yes">
+              <label class="form-check-label" for="addResourceMedSupplies">
+                Medical Supplies
+              </label>
+            </div>
+          </div>
+          
+        </div>
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="chartInactivatedYes" class="form-label">Chart Inactivated</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="chartInactivated" id="chartInactivatedYes" value="yes">
+              <label class="form-check-label" for="chartInactivatedYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="chartInactivated" id="chartInactivatedNo" value="no">
+              <label class="form-check-label" for="chartInactivatedNo">
+                No
+              </label>
+            </div>
+          </div>
+          
+          <div class="col-4">
+            <label for="dateOfEndCareLetterSent" class="form-label">Date End of Care Letter Sent</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="dateOfEndCareLetterSent" placeholder="YYYY-MM-DD" name="dateOfEndCareLetterSent">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+        </div> 
+      </div>
+      <div class="card-footer">
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label for="auditPostPartumYes" class="form-label">Post Partum Visit/ End of Care Audit Complete</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="auditPostPartum" id="auditPostPartumYes" value="yes">
+              <label class="form-check-label" for="auditPostPartumYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="auditPostPartum" id="auditPostPartumNo" value="no">
+              <label class="form-check-label" for="auditPostPartumNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="auditPostPartumDate" class="form-label">Audit Complete Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="auditPostPartumDate" placeholder="YYYY-MM-DD" name="auditPostPartumDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="auditPostPartumAuditor" class="form-label">Auditor</label>
+            <input type="text" class="form-control" id="auditPostPartumAuditor" placeholder="Name" name="auditPostPartumAuditor">
+          </div>
+        </div>
+      </div>
+
+
+
+
+      
+    </div>
+
+    <div class="card">
+      <h5 class="card-header">Outcome of Pregnancy</h5>
+      <div class="card-body">
+        
+
+        <div class="row gy-3">
+          <div class="col-4">
+            <div>
+              <label for="obReferralYes" class="form-label">OB Referral</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="obReferral" id="obReferralYes" value="yes">
+              <label class="form-check-label" for="obReferralYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="obReferral" id="obReferralNo" value="no">
+              <label class="form-check-label" for="obReferralNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <div>
+            <label for="obReferralOutcomeShared" class="form-label">Outcome OB referral</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="obReferralOutcome" id="obReferralOutcomeShared" value="sharedCare">
+              <label class="form-check-label" for="obReferralOutcomeShared">
+                Shared Care
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="obReferralOutcome" id="obReferralOutcomeTransfer" value="transfer">
+              <label class="form-check-label" for="obReferralOutcomeTransfer">
+                Transfer
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="dateReferralResponseSent" class="form-label">Date Referral Response Sent</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="dateReferralResponseSent" placeholder="YYYY-MM-DD" name="dateReferralResponseSent">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+        </div>
+
+
+        <div class="row gy-3">
+          <div class="col-12">
+            <div>
+              <label class="form-label">Reason for Referral</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefBMI" id="reasonForRefBMI" value="yes">
+              <label class="form-check-label" for="reasonForRefBMI">
+                BMI High
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefERCS" id="reasonForRefERCS" value="yes">
+              <label class="form-check-label" for="reasonForRefERCS">
+                ERCS
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefFetalAnom" id="reasonForRefFetalAnom" value="yes">
+              <label class="form-check-label" for="reasonForRefFetalAnom">
+                Fetal Anomalies
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefFetalLie" id="reasonForRefFetalLie" value="yes">
+              <label class="form-check-label" for="reasonForRefFetalLie">
+                Fetal Lie
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefFibroids" id="reasonForRefFibroids" value="yes">
+              <label class="form-check-label" for="reasonForRefFibroids">
+                Fibroids
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefGDM" id="reasonForRefGDM" value="yes">
+              <label class="form-check-label" for="reasonForRefGDM">
+                GDM-Insulin
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefHTN" id="reasonForRefHTN" value="yes">
+              <label class="form-check-label" for="reasonForRefHTN">
+                HTN/HELLP
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefIUGR" id="reasonForRefIUGR" value="yes">
+              <label class="form-check-label" for="reasonForRefIUGR">
+                IUGR/SGA/LGA
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefLMA" id="reasonForRefLMA" value="yes">
+              <label class="form-check-label" for="reasonForRefLMA">
+                LMA
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefMulRiskFactors" id="reasonForRefMulRiskFactors" value="yes">
+              <label class="form-check-label" for="reasonForRefMulRiskFactors">
+                Mutliple Risk Factors
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefPlacental" id="reasonForRefPlacental" value="yes">
+              <label class="form-check-label" for="reasonForRefPlacental">
+                Placental Issues
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="checkbox" name="reasonForRefUterine" id="reasonForRefUterine" value="yes">
+              <label class="form-check-label" for="reasonForRefUterine">
+                Uterine Anomalies
+              </label>
+            </div>
+            
+          </div>
+        </div>
+
+        <div class="row gy-3">
+          <div class="col-12">
+            <label for="otherSigComplications" class="form-label">Other Significant Complications</label>
+            <textarea class="form-control" id="otherSigComplications" rows="3" name="otherSigComplications"></textarea>
+          </div>
+          
+        </div>
+      </div>
+      <div class="card-footer">
+        <div class="row g-3">
+          <div class="col-4">
+            <div>
+              <label class="form-label">Outcome of Pregnancy Audit Complete</label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="auditOutcomeOfPreg" id="auditOutcomeOfPregYes" value="yes">
+              <label class="form-check-label" for="auditOutcomeOfPregYes">
+                Yes
+              </label>
+            </div>
+            <div class="form-check form-check-inline">
+              <input class="form-check-input" type="radio" name="auditOutcomeOfPreg" id="auditOutcomeOfPregNo" value="no">
+              <label class="form-check-label" for="auditOutcomeOfPregNo">
+                No
+              </label>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="auditOutcomeOfPregDate" class="form-label">Audit Complete Date</label>
+            <div class="input-group">
+            <input type="text" class="form-control" id="auditOutcomeOfPregDate" placeholder="YYYY-MM-DD" name="auditOutcomeOfPregDate">
+            <span class="input-group-text">
+              <svg width="16" height="16" fill="currentColor" class="bi bi-calendar">
+                <use href="#bi-calendar"></use>
+              </svg>
+            </span>
+            </div>
+          </div>
+          <div class="col-4">
+            <label for="auditOutcomeOfPregAuditor" class="form-label">Auditor</label>
+            <input type="text" class="form-control" id="auditOutcomeOfPregAuditor" placeholder="Name" name="auditOutcomeOfPregAuditor">
+          </div>
+        </div>
+      </div>
+    </div>
+    
+      <div class="row DoNotPrint" style="padding:3px;margin:5px;" >
+        <div class="col-sm-12">
+           <input value="Save" name="SubmitButton" type="submit" class="btn btn-primary btn-lg btn-block" >
+        </div>
+      </div>
+    </form>
+  </div> <!-- containerfluid -->
+    
+   
+      
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js" integrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz" crossorigin="anonymous"></script>
+    <script>
+      console.log("docDemo",document.getElementById('demoNo'));
+      var demoNo = document.getElementById('demoNo').value;
+      getLastestFormData(demoNo);
+
+      getDemographic(demoNo);
+
+      getCurrentUser();
+
+
+      
+			Calendar.setup({ inputField: "edc", ifFormat: "%Y-%m-%d", showsTime: false, button: "edc" });
+      Calendar.setup({ inputField: "dateReferralResponseSent", ifFormat: "%Y-%m-%d", showsTime: false, button: "dateReferralResponseSent" });
+
+      Calendar.setup({ inputField: "week20", ifFormat: "%Y-%m-%d", showsTime: false, button: "week20" });
+      Calendar.setup({ inputField: "week28", ifFormat: "%Y-%m-%d", showsTime: false, button: "week28" });
+      Calendar.setup({ inputField: "week36", ifFormat: "%Y-%m-%d", showsTime: false, button: "week36" });
+      Calendar.setup({ inputField: "dateOfFirstVisit", ifFormat: "%Y-%m-%d", showsTime: false, button: "dateOfFirstVisit" });
+      Calendar.setup({ inputField: "rhClinicDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "rhClinicDate" });
+      Calendar.setup({ inputField: "audit20wDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "audit20wDate" });
+      Calendar.setup({ inputField: "audit28wDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "audit28wDate" });
+      Calendar.setup({ inputField: "audit36wDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "audit36wDate" });
+      Calendar.setup({ inputField: "t3USBooked", ifFormat: "%Y-%m-%d", showsTime: false, button: "t3USBooked" });
+      Calendar.setup({ inputField: "deliveryDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "deliveryDate" });
+      Calendar.setup({ inputField: "postPartumVisitDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "postPartumVisitDate" });
+      Calendar.setup({ inputField: "auditDeliverSumDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "auditDeliverSumDate" });
+      Calendar.setup({ inputField: "dateOfEndCareLetterSent", ifFormat: "%Y-%m-%d", showsTime: false, button: "dateOfEndCareLetterSent" });
+      Calendar.setup({ inputField: "auditPostPartumDate", ifFormat: "%Y-%m-%d", showsTime: false, button: "auditPostPartumDate" });
+      Calendar.setup({ inputField: "dateReferralResponseSent", ifFormat: "%Y-%m-%d", showsTime: false, button: "dateReferralResponseSent" });
+
+      
+
+      document.getElementById('audit20wYes').addEventListener('change', function() {
+        if (this.checked) {
+          document.getElementById('audit20wDate').value = new Date().toISOString().split('T')[0];
+          document.getElementById('audit20wAuditor').value = provider.formattedName;
+        }
+      });
+
+      document.getElementById('audit28wYes').addEventListener('change', function() {
+        if (this.checked) {
+          document.getElementById('audit28wDate').value = new Date().toISOString().split('T')[0];
+          document.getElementById('audit28wAuditor').value = provider.formattedName;
+        }
+      });
+      
+      document.getElementById('audit36wYes').addEventListener('change', function() {
+        if (this.checked) {
+          document.getElementById('audit36wDate').value = new Date().toISOString().split('T')[0];
+          document.getElementById('audit36wAuditor').value = provider.formattedName;
+        }
+      });
+      
+      document.getElementById('auditDeliverSumYes').addEventListener('change', function() {
+        if (this.checked) {
+          document.getElementById('auditDeliverSumDate').value = new Date().toISOString().split('T')[0];
+          document.getElementById('auditDeliverSumAuditor').value = provider.formattedName;
+        }
+      });
+           
+      document.getElementById('auditPostPartumYes').addEventListener('change', function() {
+        if (this.checked) {
+          document.getElementById('auditPostPartumDate').value = new Date().toISOString().split('T')[0];
+          document.getElementById('auditPostPartumAuditor').value = provider.formattedName;
+        }
+      });
+
+      document.getElementById('auditOutcomeOfPregYes').addEventListener('change', function() {
+        if (this.checked) {
+          document.getElementById('auditOutcomeOfPregDate').value = new Date().toISOString().split('T')[0];
+          document.getElementById('auditOutcomeOfPregAuditor').value = provider.formattedName;
+        }
+      });
+
+      document.getElementById('updateEDCLink').addEventListener('click', function() {
+        document.getElementById('edc').value = getFormatedDate(newEDCDate);
+        document.getElementById('newEDCMsg').style.display = "none";
+        setGestionalTimesFromEDC(newEDCDate);
+      });
+
+      document.getElementById('updateFamPhysicianLink').addEventListener('click', function() {
+        document.getElementById('nameOfFamPhysician').value = newFamPhysicianStr;
+        document.getElementById('newFamPhysicianMsg').style.display = "none";
+       
+      });
+
+      
+
+      function setGestionalTimesFromEDC(edbDate){
+        document.getElementById('week20').value = findDateAtGestationalAge(edbDate , 20).toISOString().split('T')[0];
+        document.getElementById('week28').value= findDateAtGestationalAge(edbDate , 28).toISOString().split('T')[0];
+        document.getElementById('week36').value = findDateAtGestationalAge(edbDate , 36).toISOString().split('T')[0];
+
+      }
+      
+
+    </script>
+  </body>
+</html>
